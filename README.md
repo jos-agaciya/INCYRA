@@ -77,7 +77,8 @@ Spoken Status Summaries
             ↓
 Human Approval for Critical Actions
 
-Tech Stack
+## Tech Stack
+
 Real-Time Communication
 Agora RTC
 Agora Conversational AI / Agents SDK
@@ -94,12 +95,14 @@ Core Principle
 
 INCYRA does not replace incident response teams or independently determine the root cause. It helps humans stay aligned by maintaining a clear distinction between what is confirmed, what is assumed, what remains unresolved, and what actions need to be taken.
 
-Team Member Role
+## Team Member Role
+
 Jos Agaciya J	AI/ML & Incident Intelligence Lead
 Venkat Rajh P R	Real-Time Voice & Backend Lead
 Nakul R	Frontend & Integration Lead
 
-Built For
+## Built For
+
 EchoSphere Hackathon 2026
 Track: Voice AI Incident Commander
 
