@@ -26,6 +26,8 @@ app.get('/', (req, res) => {
       transcriptIngestion: 'POST /api/incident/transcript',
       incidentState: 'GET /api/incident/state',
       incidentReset: 'POST /api/incident/reset',
+      agoraJoin: 'POST /api/agora/join',
+      agoraStatus: 'GET /api/agora/status',
     },
   });
 });

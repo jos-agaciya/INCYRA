@@ -17,8 +17,8 @@ class AIIncidentEngine {
    * Ingest a transcript line and return updated intelligence
    * @param {Object} input - { speaker: string, text: string, timestamp?: string }
    */
-  processTranscript(input) {
-    return this.processor.process(input);
+  async processTranscript(input) {
+    return await this.processor.process(input);
   }
 
   /**
@@ -33,6 +33,36 @@ class AIIncidentEngine {
    */
   getPrompts() {
     return prompts;
+  }
+
+  /**
+   * Action item management
+   */
+  addActionItem(actionData) {
+    return this.state.addActionItem(actionData);
+  }
+
+  updateActionItem(id, updates) {
+    return this.state.updateActionItem(id, updates);
+  }
+
+  deleteActionItem(id) {
+    return this.state.deleteActionItem(id);
+  }
+
+  /**
+   * Decision management
+   */
+  addDecision(decisionData) {
+    return this.state.addDecision(decisionData);
+  }
+
+  updateDecision(id, updates) {
+    return this.state.updateDecision(id, updates);
+  }
+
+  deleteDecision(id) {
+    return this.state.deleteDecision(id);
   }
 
   /**

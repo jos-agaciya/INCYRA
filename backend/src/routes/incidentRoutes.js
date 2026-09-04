@@ -2,18 +2,34 @@ const express = require('express');
 const {
   handleTranscript,
   getIncidentState,
+  getActionItems,
+  createActionItem,
+  updateActionItem,
+  deleteActionItem,
+  getDecisions,
+  createDecision,
+  updateDecision,
+  deleteDecision,
   resetIncidentState,
 } = require('../controllers/incidentController');
 
 const router = express.Router();
 
-// POST /api/incident/transcript - Ingest speech/mock transcript
+// Transcript & State
 router.post('/transcript', handleTranscript);
-
-// GET /api/incident/state - Fetch live structured incident intelligence
 router.get('/state', getIncidentState);
-
-// POST /api/incident/reset - Reset incident state
 router.post('/reset', resetIncidentState);
+
+// Action Items CRUD
+router.get('/actions', getActionItems);
+router.post('/actions', createActionItem);
+router.patch('/actions/:id', updateActionItem);
+router.delete('/actions/:id', deleteActionItem);
+
+// Decisions CRUD
+router.get('/decisions', getDecisions);
+router.post('/decisions', createDecision);
+router.patch('/decisions/:id', updateDecision);
+router.delete('/decisions/:id', deleteDecision);
 
 module.exports = router;

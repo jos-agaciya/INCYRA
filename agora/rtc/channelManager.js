@@ -1,6 +1,6 @@
 /**
- * INCYRA - Agora RTC Channel Manager (Stub / Foundation)
- * Tracks active voice incident channels, joined participants, and active audio streams.
+ * INCYRA - Agora RTC Channel Manager
+ * Tracks active voice incident channels, joined participants, and agent session states in memory.
  */
 
 class AgoraChannelManager {
@@ -9,41 +9,100 @@ class AgoraChannelManager {
   }
 
   /**
-   * Register a new incident voice room channel.
+   * Register or update an incident voice room channel with safe runtime metadata.
    * @param {string} channelName
-   * @param {Object} metadata
+   * @param {Object} [details]
    */
-  createChannel(channelName, metadata = {}) {
-    if (this.activeChannels.has(channelName)) {
-      return this.activeChannels.get(channelName);
-    }
+  createOrUpdateChannel(channelName, details = {}) {
+    const existing = this.activeChannels.get(channelName) || {};
 
-    const channel = {
+    const updated = {
       channelName,
-      createdAt: new Date().toISOString(),
-      participants: new Set(),
-      metadata,
-      status: 'ACTIVE',
+      createdAt: existing.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: details.status || existing.status || 'ACTIVE',
+      agentJoined: details.agentJoined !== undefined ? details.agentJoined : existing.agentJoined || false,
+      agentSession: details.agentSession || existing.agentSession || null,
+      participantsCount: details.participantsCount || (existing.participants ? existing.participants.size : 0),
+      metadata: {
+        ...(existing.metadata || {}),
+        ...(details.metadata || {}),
+      },
     };
 
-    this.activeChannels.set(channelName, channel);
-    return channel;
+    this.activeChannels.set(channelName, updated);
+    return this.getSanitizedChannel(channelName);
   }
 
   /**
-   * Add participant to voice channel.
+   * Get sanitized channel info without any sensitive values.
+   * @param {string} channelName
+   * @param {boolean} [raw=false]
    */
-  joinParticipant(channelName, uid, username) {
-    const channel = this.createChannel(channelName);
-    channel.participants.add({ uid, username, joinedAt: new Date().toISOString() });
-    return channel;
+  getChannel(channelName, raw = false) {
+    if (raw) {
+      return this.activeChannels.get(channelName) || null;
+    }
+    return this.getSanitizedChannel(channelName);
   }
 
   /**
-   * Get active channel info.
+   * Get all active channels in sanitized format.
    */
-  getChannel(channelName) {
-    return this.activeChannels.get(channelName) || null;
+  getAllActiveChannels() {
+    const channels = [];
+    for (const [name] of this.activeChannels) {
+      const sanitized = this.getSanitizedChannel(name);
+      if (sanitized) channels.push(sanitized);
+    }
+    return channels;
+  }
+
+  /**
+   * Mark a channel agent as disconnected / stopped.
+   * @param {string} channelName
+   */
+  setAgentStatus(channelName, status) {
+    const channel = this.activeChannels.get(channelName);
+    if (channel) {
+      channel.status = status;
+      channel.updatedAt = new Date().toISOString();
+      if (status === 'LEFT' || status === 'STOPPED') {
+        channel.agentJoined = false;
+        channel.agentSession = null;
+      }
+      return this.getSanitizedChannel(channelName);
+    }
+    return null;
+  }
+
+  /**
+   * Helper to sanitize channel objects before returning through API.
+   * @private
+   */
+  getSanitizedChannel(channelName) {
+    const channel = this.activeChannels.get(channelName);
+    if (!channel) return null;
+
+    return {
+      channelName: channel.channelName,
+      status: channel.status,
+      agentJoined: channel.agentJoined,
+      agentSession: channel.agentSession ? {
+        agentId: channel.agentSession.agentId,
+        status: channel.agentSession.status,
+      } : null,
+      createdAt: channel.createdAt,
+      updatedAt: channel.updatedAt,
+      metadata: channel.metadata || {},
+    };
+  }
+
+  /**
+   * Clear all channel states.
+   */
+  reset() {
+    this.activeChannels.clear();
   }
 }
 

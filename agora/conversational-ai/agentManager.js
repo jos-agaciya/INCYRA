@@ -1,62 +1,177 @@
 /**
- * INCYRA - Agora Conversational AI Agent Manager (Stub / Foundation)
+ * INCYRA - Agora Conversational AI Agent Manager
+ *
  * Coordinates the INCYRA AI Agent's presence in Agora voice channels:
- * - Connecting Agora Conversational AI / Agents SDK
- * - Streaming live STT into the AI Incident Intelligence Engine
- * - Broadcasting spoken AI summaries/warnings back into the channel
+ * - Communicates with Agora Conversational AI REST API
+ * - Manages agent join requests for incident voice rooms
+ * - Tracks runtime session state in memory
+ * - Provides safe status and diagnostics without exposing credentials
  */
 
+const AgoraApiClient = require('./agoraApiClient');
+const AgoraChannelManager = require('../rtc/channelManager');
+
 class AgoraAgentManager {
-  constructor(config = {}) {
-    this.agentId = config.agentId || 'incyra-commander-01';
-    this.status = 'DISCONNECTED'; // DISCONNECTED | CONNECTING | LISTENING | SPEAKING
-    this.activeChannel = null;
+  /**
+   * @param {Object} [options]
+   * @param {AgoraApiClient} [options.apiClient]
+   * @param {AgoraChannelManager} [options.channelManager]
+   */
+  constructor(options = {}) {
+    this.apiClient = options.apiClient || new AgoraApiClient();
+    this.channelManager = options.channelManager || new AgoraChannelManager();
   }
 
   /**
-   * Start the AI voice agent in an Agora incident voice room.
-   * @param {string} channelName
+   * Safe status check of Agora Conversational AI configuration.
+   * NEVER exposes actual secret values.
    */
-  async joinIncidentChannel(channelName) {
-    this.activeChannel = channelName;
-    this.status = 'LISTENING';
+  getConfigurationStatus() {
+    const check = this.apiClient.checkConfiguration();
     return {
-      success: true,
-      agentId: this.agentId,
-      channelName,
-      status: this.status,
-      message: `Agora Conversational AI agent initialized for channel "${channelName}". (Stub)`,
+      configured: check.configured,
+      appIdConfigured: Boolean(this.apiClient.appId),
+      customerIdConfigured: Boolean(this.apiClient.customerId),
+      customerSecretConfigured: Boolean(this.apiClient.customerSecret),
+      pipelineConfigured: Boolean(this.apiClient.pipelineId),
+      agentIntegration: check.configured ? 'ready' : 'missing_configuration',
+      missing: check.missing,
     };
   }
 
   /**
-   * Broadcast a spoken message into the channel via Agora TTS.
-   * @param {string} spokenText
+   * Request the published INCYRA Agora AI agent to join an incident voice channel.
+   *
+   * @param {string} channelName - Agora RTC voice channel name
+   * @param {Object} [options]
+   * @param {string} [options.pipelineId] - Optional custom pipeline ID override
+   * @returns {Promise<Object>} Safe response containing status and sanitized agent info
    */
-  async broadcastSpokenMessage(spokenText) {
-    if (this.status === 'DISCONNECTED') {
-      throw new Error('Agent is not connected to any Agora channel.');
+  async joinIncidentAgent(channelName, options = {}) {
+    if (!channelName || typeof channelName !== 'string' || channelName.trim().length === 0) {
+      const err = new Error('channelName is required and cannot be empty.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanChannelName = channelName.trim();
+
+    // Check if an agent session is already active in this channel to prevent duplicate joins on rerender
+    const existing = this.channelManager.getChannel(cleanChannelName, true);
+    if (existing && existing.agentJoined && existing.status === 'AGENT_JOINED' && existing.agentSession) {
+      console.log(`[AGORA LIFECYCLE] Agent kept alive: channel="${cleanChannelName}", agentId=${existing.agentSession.agentId}`);
+      return {
+        success: true,
+        message: 'INCYRA agent already joined and active in channel',
+        channelName: cleanChannelName,
+        agent: existing.agentSession,
+      };
+    }
+
+    // Verify configuration
+    const configStatus = this.getConfigurationStatus();
+    if (!configStatus.configured) {
+      const err = new Error(`Agora Conversational AI is not fully configured. Missing: ${configStatus.missing.join(', ')}`);
+      err.statusCode = 503;
+      err.missing = configStatus.missing;
+      throw err;
+    }
+
+    // Call Agora Conversational AI REST API
+    const result = await this.apiClient.joinChannel(cleanChannelName, options.pipelineId);
+
+    // Sanitize response data from Agora
+    const agoraData = result.data || {};
+    const safeAgent = {
+      agentId: agoraData.agent_id || agoraData.id || agoraData.agentId || 'incyra-agent',
+      status: agoraData.status || 'RUNNING',
+      joinResponse: agoraData,
+    };
+
+    // Update in-memory runtime channel tracking
+    this.channelManager.createOrUpdateChannel(cleanChannelName, {
+      status: 'AGENT_JOINED',
+      agentJoined: true,
+      agentSession: safeAgent,
+    });
+
+    console.log(`[AGORA LIFECYCLE] Agent joined: channel="${cleanChannelName}", agentId=${safeAgent.agentId}`);
+
+    return {
+      success: true,
+      message: 'INCYRA agent join request submitted',
+      channelName: cleanChannelName,
+      agent: safeAgent,
+    };
+  }
+
+  /**
+   * Get live runtime status directly from Agora for an active agent ID
+   * @param {string} agentId
+   */
+  async getLiveAgentStatus(agentId) {
+    if (!agentId) {
+      const err = new Error('agentId is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    return await this.apiClient.getAgentSession(agentId);
+  }
+
+  /**
+   * Get runtime status for a specific channel or overall agent integration.
+   * @param {string} [channelName]
+   */
+  getAgentStatus(channelName) {
+    const configStatus = this.getConfigurationStatus();
+
+    if (channelName) {
+      const channel = this.channelManager.getChannel(channelName);
+      return {
+        configured: configStatus.configured,
+        agentIntegration: configStatus.agentIntegration,
+        channel: channel || { channelName, status: 'NOT_FOUND', agentJoined: false },
+      };
     }
 
     return {
-      success: true,
-      spokenText,
-      timestamp: new Date().toISOString(),
-      channel: this.activeChannel,
+      configured: configStatus.configured,
+      pipelineConfigured: configStatus.pipelineConfigured,
+      agentIntegration: configStatus.agentIntegration,
+      activeChannels: this.channelManager.getAllActiveChannels(),
     };
   }
 
   /**
-   * Leave current voice room.
+   * Stop / leave incident agent from channel (runtime tracking & clean extension point).
+   * @param {string} channelName
    */
-  async leaveChannel() {
-    const prevChannel = this.activeChannel;
-    this.activeChannel = null;
-    this.status = 'DISCONNECTED';
+  async stopIncidentAgent(channelName) {
+    if (!channelName) {
+      const err = new Error('channelName is required to stop agent.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanChannel = channelName.trim();
+    const existing = this.channelManager.getChannel(cleanChannel, true);
+    if (existing && existing.agentSession && existing.agentSession.agentId) {
+      try {
+        await this.apiClient.leaveAgentSession(existing.agentSession.agentId);
+      } catch (leaveErr) {
+        console.warn(`[AGENT API] Note while leaving Agora agent session:`, leaveErr.message);
+      }
+    }
+
+    this.channelManager.setAgentStatus(cleanChannel, 'STOPPED');
+    console.log(`[AGORA LIFECYCLE] Agent stopped: channel="${cleanChannel}"`);
+
     return {
       success: true,
-      channel: prevChannel,
-      status: this.status,
+      message: `INCYRA agent session stopped for channel "${cleanChannel}".`,
+      channelName: cleanChannel,
+      status: 'STOPPED',
     };
   }
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node ../tests/test-endpoints.js"
+    "test": "node ../tests/test-agora.js && node ../tests/test-endpoints.js && node ../tests/test-live-flow.js && node ../tests/test-phase1-stabilization.js && node ../tests/test-phase2.js && node ../tests/test-dynamic-context.js",
+    "test:live": "node ../tests/test-live-agora.js"
   },
   "keywords": [
     "incident-management",
@@ -18,6 +19,7 @@
   "author": "INCYRA Team",
   "license": "ISC",
   "dependencies": {
+    "agora-token": "^2.0.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2"

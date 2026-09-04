@@ -1,8 +1,29 @@
 /**
  * INCYRA - Automated Endpoint & AI Engine Verification Test
+ * Runs standalone by launching the Express server in-process if not already running.
  */
 
 const http = require('http');
+const app = require('../backend/src/app');
+
+let serverInstance = null;
+let serverPort = 5000;
+
+function startServerIfNeeded() {
+  return new Promise((resolve) => {
+    // Attempt to connect to port 5000 first
+    const checkReq = http.get(`http://localhost:${serverPort}/api/health`, (res) => {
+      resolve(); // Server already running
+    });
+    checkReq.on('error', () => {
+      // Start in-process server on free port
+      serverInstance = app.listen(0, () => {
+        serverPort = serverInstance.address().port;
+        resolve();
+      });
+    });
+  });
+}
 
 function postJson(path, payload) {
   return new Promise((resolve, reject) => {
@@ -10,7 +31,7 @@ function postJson(path, payload) {
     const req = http.request(
       {
         hostname: 'localhost',
-        port: 5000,
+        port: serverPort,
         path,
         method: 'POST',
         headers: {
@@ -38,7 +59,7 @@ function postJson(path, payload) {
 
 function getJson(path) {
   return new Promise((resolve, reject) => {
-    http.get(`http://localhost:5000${path}`, (res) => {
+    http.get(`http://localhost:${serverPort}${path}`, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
       res.on('end', () => {
@@ -53,7 +74,8 @@ function getJson(path) {
 }
 
 async function runTests() {
-  console.log('🧪 Starting INCYRA Phase 1 Verification Tests...\n');
+  await startServerIfNeeded();
+  console.log(`🧪 Starting INCYRA System & API Verification Tests (Port: ${serverPort})...\n`);
 
   // 1. Test Health Endpoint
   console.log('1️⃣ Testing GET /api/health');
@@ -119,10 +141,63 @@ async function runTests() {
   console.log('Active Participants:', stateRes.data.data.participants.map((p) => p.name).join(', '));
   console.log('Current Spoken Briefing:', stateRes.data.data.summary);
 
-  console.log('\n✅ All INCYRA Phase 1 Verification Tests Passed Successfully!');
+  // 8. Test Agora Status Endpoint
+  console.log('\n8️⃣ Testing GET /api/agora/status');
+  const agoraStatusRes = await getJson('/api/agora/status');
+  console.log('Status Code:', agoraStatusRes.statusCode);
+  console.log('Agora Status Data:', JSON.stringify(agoraStatusRes.data, null, 2));
+  if (agoraStatusRes.statusCode !== 200) {
+    throw new Error('Agora status endpoint failed');
+  }
+
+  // 9. Test Agora Join Endpoint Validation (empty channelName should return 400)
+  console.log('\n9️⃣ Testing POST /api/agora/join Validation (Empty channel)');
+  const joinValidationRes = await postJson('/api/agora/join', { channelName: '' });
+  console.log('Status Code:', joinValidationRes.statusCode);
+  console.log('Validation Error Response:', JSON.stringify(joinValidationRes.data, null, 2));
+  if (joinValidationRes.statusCode !== 400) {
+    throw new Error('Agora join empty channel validation failed (expected 400)');
+  }
+
+  // 10. Test Agora Token Endpoint: POST /api/agora/token
+  console.log('\n🔟 Testing POST /api/agora/token (RTC Token Generation)');
+  const tokenValidationRes = await postJson('/api/agora/token', { channelName: '' });
+  console.log('Empty Channel Token Validation Status:', tokenValidationRes.statusCode);
+  if (tokenValidationRes.statusCode !== 400) {
+    throw new Error('Agora token empty channel validation failed (expected 400)');
+  }
+
+  const tokenRes = await postJson('/api/agora/token', {
+    channelName: 'incyra-incident-war-room',
+    uid: 555123,
+  });
+  console.log('RTC Token Generation Status:', tokenRes.statusCode);
+  console.log('RTC Token Response Structure:', {
+    success: tokenRes.data.success,
+    hasAppId: Boolean(tokenRes.data.appId),
+    channelName: tokenRes.data.channelName,
+    uid: tokenRes.data.uid,
+    tokenType: typeof tokenRes.data.token,
+    hasSecretLeaked: tokenRes.data.appCertificate !== undefined,
+  });
+
+  if (tokenRes.statusCode === 200) {
+    if (!tokenRes.data.success || !tokenRes.data.token || tokenRes.data.appCertificate !== undefined) {
+      throw new Error('Agora token generation returned invalid payload');
+    }
+  }
+
+  console.log('\n✅ All INCYRA System & API Verification Tests Passed Successfully!');
+
+  if (serverInstance) {
+    serverInstance.close();
+  }
 }
 
 runTests().catch((err) => {
   console.error('❌ Test failed:', err);
+  if (serverInstance) {
+    serverInstance.close();
+  }
   process.exit(1);
 });

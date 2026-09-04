@@ -51,7 +51,7 @@ class ConflictDetector {
                 speaker: newSpeaker,
                 text: newEntry.text,
               },
-              recommendation: `Discrepancy detected between ${past.speaker} (${pastPercentage}%) and ${newSpeaker} (${newPercentage}%). Verify CloudWatch / Prometheus metrics before triggering database failovers.`,
+              recommendation: `Discrepancy detected between ${past.speaker} (${pastPercentage}%) and ${newSpeaker} (${newPercentage}%). Verify metrics before triggering failovers or scaling actions.`,
             };
           }
         }
