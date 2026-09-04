@@ -3,16 +3,17 @@ import { initialIncidentData } from '../data/demoData';
 import { apiService } from '../services/api';
 import { agoraService } from '../services/agora';
 
-export function useIncidentData() {
+export function useIncidentData(activeRoomId = null, currentUser = null) {
   const [data, setData] = useState(initialIncidentData);
-  const [isDemoMode, setIsDemoMode] = useState(false); // Default to live backend mode
+  const [roomMembers, setRoomMembers] = useState([]);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   // Elapsed incident timer (seconds)
-  const [elapsedSeconds, setElapsedSeconds] = useState(initialIncidentData.incident.elapsedSeconds);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Once-per-session room greeting flag
   const hasSpokenInitialGreeting = useRef(false);
@@ -26,11 +27,14 @@ export function useIncidentData() {
 
   // Dynamic channel name
   const channelName = useMemo(() => {
+    if (activeRoomId) {
+      return `agora-incident-${activeRoomId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    }
     if (data.incident && data.incident.id) {
       return `agora-incident-${data.incident.id.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     }
     return 'agora-incident-inc8921';
-  }, [data.incident]);
+  }, [activeRoomId, data.incident]);
 
   // Tick the live incident timer
   useEffect(() => {
@@ -60,13 +64,16 @@ export function useIncidentData() {
     setData((prev) => {
       const incident = raw.incident || {
         ...prev.incident,
-        id: raw.incidentId || prev.incident.id,
+        id: raw.incidentId || activeRoomId || prev.incident.id,
+        title: raw.title || prev.incident.title,
         status: raw.status || prev.incident.status,
         severity: raw.severity || prev.incident.severity,
+        service: raw.service || prev.incident.service,
+        commander: raw.commander || prev.incident.commander,
       };
 
-      const actions = raw.actions || raw.actionItems || prev.actions || [];
-      const decisions = raw.decisions || prev.decisions || [];
+      const actions = raw.actions || raw.actionItems || [];
+      const decisions = raw.decisions || [];
       const openActionsCount = actions.filter((a) => a.status === 'OPEN' || a.status === 'IN_PROGRESS' || a.status === 'BLOCKED').length;
       const completedActionsCount = actions.filter((a) => a.status === 'COMPLETED').length;
       const confirmedDecisionsCount = decisions.filter((d) => d.status === 'CONFIRMED').length;
@@ -113,28 +120,34 @@ export function useIncidentData() {
         proposedCriticalAction: raw.proposedCriticalAction !== undefined ? raw.proposedCriticalAction : prev.proposedCriticalAction,
       };
     });
-  }, []);
+  }, [activeRoomId]);
 
-  // Fetch incident state from backend or fallback to demo
+  // Fetch incident state from backend
   const fetchState = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true);
     try {
-      const response = await apiService.getIncidentState();
+      const response = await apiService.getIncidentState(activeRoomId);
       if (response && response.success) {
         applyBackendState(response);
         setIsDemoMode(false);
         setIsBackendConnected(true);
         setError(null);
       }
+
+      // If activeRoomId, also fetch room members
+      if (activeRoomId) {
+        const members = await apiService.getRoomMembers(activeRoomId).catch(() => []);
+        setRoomMembers(members);
+      }
     } catch (err) {
-      console.warn('[STATE] Backend unavailable; operating in local mode:', err.message);
+      console.warn('[STATE] Backend state fetch note:', err.message);
       setIsBackendConnected(false);
       setIsDemoMode(true);
     } finally {
       setIsLoading(false);
       if (showRefreshing) setIsRefreshing(false);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
   // Initial load and periodic background poll
   useEffect(() => {
@@ -149,15 +162,20 @@ export function useIncidentData() {
   useEffect(() => {
     const unsubTranscript = agoraService.handleTranscript(async (transcriptPayload) => {
       try {
-        console.log(`[TRANSCRIPT PIPELINE] Ingesting live speech utterance: "${transcriptPayload.text}" (speaker: ${transcriptPayload.speaker})`);
-        const result = await apiService.postTranscript(transcriptPayload);
+        console.log(`[TRANSCRIPT PIPELINE] Ingesting speech utterance for room "${activeRoomId}": "${transcriptPayload.text}" (speaker: ${transcriptPayload.speaker})`);
+        const payloadWithRoom = {
+          ...transcriptPayload,
+          roomId: activeRoomId,
+          speaker: currentUser?.name || transcriptPayload.speaker || 'Incident Responder',
+        };
+        const result = await apiService.postTranscript(payloadWithRoom, activeRoomId);
         if (result && result.success) {
           const updatedState = result.state || result.data;
           if (updatedState) {
             applyBackendState(updatedState);
             setIsBackendConnected(true);
             setIsDemoMode(false);
-            console.log(`[TRANSCRIPT PIPELINE] Live incident state updated in UI (Facts: ${updatedState.factsCount || 'updated'}, Actions: ${updatedState.actions?.length || 0}, Decisions: ${updatedState.decisions?.length || 0})`);
+            console.log(`[TRANSCRIPT PIPELINE] Live incident state updated for room ${activeRoomId}`);
           }
 
           // Trigger INCYRA AI Spoken Voice Response
@@ -175,7 +193,7 @@ export function useIncidentData() {
     return () => {
       unsubTranscript();
     };
-  }, [applyBackendState]);
+  }, [activeRoomId, currentUser, applyBackendState]);
 
   // Subscribe to Agora RTC Service events
   useEffect(() => {
@@ -205,11 +223,15 @@ export function useIncidentData() {
   }, []);
 
   // ------------------------------------------------------------------------
-  // ACTION ITEMS MUTATIONS
+  // ACTION ITEMS MUTATIONS (Room-Scoped)
   // ------------------------------------------------------------------------
   const createActionItem = useCallback(async (actionData) => {
     try {
-      const res = await apiService.createActionItem(actionData);
+      const payload = {
+        ...actionData,
+        roomId: activeRoomId,
+      };
+      const res = await apiService.createActionItem(payload, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
@@ -217,6 +239,7 @@ export function useIncidentData() {
         setData((prev) => {
           const newItem = {
             id: `act-${Date.now()}`,
+            roomId: activeRoomId,
             title: actionData.title,
             description: actionData.description || '',
             priority: actionData.priority || 'HIGH',
@@ -239,15 +262,14 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[ACTION ITEM] Error creating action item:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
   const updateActionItem = useCallback(async (actionId, updates) => {
     try {
-      const res = await apiService.updateActionItem(actionId, updates);
+      const res = await apiService.updateActionItem(actionId, updates, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
-        // Optimistic local update
         setData((prev) => {
           const updatedActions = prev.actions.map((a) => (a.id === actionId ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a));
           return {
@@ -263,11 +285,11 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[ACTION ITEM] Error updating action item:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
   const deleteActionItem = useCallback(async (actionId) => {
     try {
-      const res = await apiService.deleteActionItem(actionId);
+      const res = await apiService.deleteActionItem(actionId, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
@@ -286,9 +308,8 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[ACTION ITEM] Error deleting action item:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
-  // Toggle action item status: OPEN -> IN_PROGRESS -> COMPLETED -> OPEN
   const toggleActionStatus = useCallback((actionId) => {
     const item = data.actions.find((a) => a.id === actionId);
     if (!item) return;
@@ -302,22 +323,27 @@ export function useIncidentData() {
   }, [data.actions, updateActionItem]);
 
   // ------------------------------------------------------------------------
-  // DECISIONS MUTATIONS
+  // DECISIONS MUTATIONS (Room-Scoped)
   // ------------------------------------------------------------------------
   const createDecision = useCallback(async (decisionData) => {
     try {
-      const res = await apiService.createDecision(decisionData);
+      const payload = {
+        ...decisionData,
+        roomId: activeRoomId,
+        decidedBy: currentUser?.name || decisionData.decidedBy || 'Incident Commander',
+      };
+      const res = await apiService.createDecision(payload, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
-        // Optimistic fallback
         setData((prev) => {
           const newItem = {
             id: `d-${Date.now()}`,
+            roomId: activeRoomId,
             title: decisionData.title,
             description: decisionData.description || decisionData.rationale || '',
             status: decisionData.status || 'CONFIRMED',
-            decidedBy: decisionData.decidedBy || 'Incident Commander',
+            decidedBy: payload.decidedBy,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -336,11 +362,11 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[DECISION] Error creating decision:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, currentUser, applyBackendState]);
 
   const updateDecision = useCallback(async (decisionId, updates) => {
     try {
-      const res = await apiService.updateDecision(decisionId, updates);
+      const res = await apiService.updateDecision(decisionId, updates, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
@@ -360,11 +386,11 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[DECISION] Error updating decision:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
   const deleteDecision = useCallback(async (decisionId) => {
     try {
-      const res = await apiService.deleteDecision(decisionId);
+      const res = await apiService.deleteDecision(decisionId, activeRoomId);
       if (res && res.success && res.state) {
         applyBackendState(res.state);
       } else {
@@ -384,10 +410,11 @@ export function useIncidentData() {
     } catch (err) {
       console.error('[DECISION] Error deleting decision:', err);
     }
-  }, [applyBackendState]);
+  }, [activeRoomId, applyBackendState]);
 
-  // Mark conflict resolved through human confirmation modal
-  const resolveConflict = useCallback((conflictId, resolutionChoice = 'Reconciled via DB node exporter telemetry at 42%') => {
+  // Mark conflict resolved
+  const resolveConflict = useCallback((conflictId, resolutionChoice = 'Reconciled via verified telemetry') => {
+    const approver = currentUser?.name || 'Incident Commander';
     setData((prev) => {
       const updatedConflicts = prev.conflicts.map((c) => {
         if (c.id !== conflictId) return c;
@@ -400,14 +427,14 @@ export function useIncidentData() {
         type: 'fact',
         tag: 'RESOLVED',
         title: 'Conflict verified & resolved',
-        description: `Database metric conflict resolved: ${resolutionChoice}. Recorded as verified telemetry.`,
-        author: 'Incident Commander',
+        description: `Discrepancy resolved: ${resolutionChoice}. Recorded as verified telemetry.`,
+        author: approver,
       };
 
       const newFact = {
         id: `f-${Date.now()}`,
-        text: `Database CPU reconciled at 42% (Normal load under replica balancing).`,
-        source: 'Human Verification / Prometheus Node Exporter',
+        text: `Conflict resolved: ${resolutionChoice}.`,
+        source: `Human Verification (${approver})`,
         timestamp: new Date().toISOString().substring(11, 16),
         confidence: 100,
         verified: true,
@@ -422,25 +449,20 @@ export function useIncidentData() {
           ...prev.metrics,
           conflicts: updatedConflicts.filter((c) => !c.resolved).length,
         },
-        aiObservation: {
-          ...prev.aiObservation,
-          observation: 'Database metric discrepancy resolved by Incident Commander. Telemetry confirmed at 42% CPU.',
-          confidence: '99%',
-          lastUpdated: 'Just now',
-        },
       };
     });
-  }, []);
+  }, [currentUser]);
 
-  // Confirm proposed critical action (e.g. Restart cluster)
-  const confirmCriticalAction = useCallback((actionId, approverName = 'Incident Commander') => {
+  // Confirm proposed critical action
+  const confirmCriticalAction = useCallback((actionId) => {
+    const approver = currentUser?.name || 'Incident Commander';
     setData((prev) => {
       const newDecision = {
         id: `d-${Date.now()}`,
         title: `Approved and executed: ${prev.proposedCriticalAction?.action || 'Critical Action'}`,
         decision: `Approved and executed: ${prev.proposedCriticalAction?.action || 'Critical Action'}`,
-        madeBy: approverName,
-        decidedBy: approverName,
+        madeBy: approver,
+        decidedBy: approver,
         timestamp: new Date().toISOString().substring(11, 16),
         status: 'CONFIRMED',
         rationale: 'Human-in-the-loop approved recovery procedure.',
@@ -452,8 +474,8 @@ export function useIncidentData() {
         type: 'decision',
         tag: 'CRITICAL ACTION',
         title: prev.proposedCriticalAction?.action || 'Critical Action Approved',
-        description: `Executed with explicit human confirmation by ${approverName}. Recovery procedure initiated.`,
-        author: approverName,
+        description: `Executed with explicit human confirmation by ${approver}. Recovery procedure initiated.`,
+        author: approver,
       };
 
       return {
@@ -461,20 +483,14 @@ export function useIncidentData() {
         proposedCriticalAction: null,
         decisions: [newDecision, ...prev.decisions],
         timeline: [newTimelineEvent, ...prev.timeline],
-        aiObservation: {
-          ...prev.aiObservation,
-          observation: `Human confirmed: ${prev.proposedCriticalAction?.action || 'Critical Action'}. Monitoring cluster restart and connection drain.`,
-          confidence: '98%',
-          lastUpdated: 'Just now',
-        },
       };
     });
-  }, []);
+  }, [currentUser]);
 
   // Regenerate AI Status Briefing
   const regenerateSummary = useCallback(async () => {
     setIsRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     setData((prev) => {
       const timeStr = new Date().toISOString().substring(11, 16) + ' UTC';
       const activeConflicts = prev.conflicts.filter((c) => !c.resolved);
@@ -484,7 +500,7 @@ export function useIncidentData() {
       const newSummary = isConflictPending
         ? `Current incident status: ${title} under investigation. Telemetry conflict active: ${activeConflicts[0].title}. ${prev.metrics.openActions} action items in progress.`
         : `Current incident status: ${title} (${status}). Confirmed facts logged: ${prev.facts.length}. Action items remaining: ${prev.metrics.openActions}.`;
-      
+
       return {
         ...prev,
         briefing: {
@@ -505,7 +521,7 @@ export function useIncidentData() {
       // 1. Fetch dynamic RTC token for the browser user from backend
       console.log(`[RTC] Requesting user RTC token for channel: "${channelName}"`);
       const tokenData = await apiService.getAgoraToken(channelName);
-      console.log(`[RTC] user token received (UID: ${tokenData.uid}, App ID configured: ${Boolean(tokenData.appId)})`);
+      console.log(`[RTC] user token received (UID: ${tokenData.uid})`);
 
       if (tokenData.agentRtcUid) {
         agoraService.setKnownAgentUid(tokenData.agentRtcUid);
@@ -515,7 +531,7 @@ export function useIncidentData() {
       console.log(`[AGENT] join request sent for channel: "${channelName}"`);
       try {
         const agentRes = await apiService.joinAgoraAgent(channelName);
-        console.log(`[AGENT] join response received: status=${agentRes.agent?.status || 'RUNNING'}, agentId=${agentRes.agent?.agentId || 'N/A'}`);
+        console.log(`[AGENT] join response received: status=${agentRes.agent?.status || 'RUNNING'}`);
         if (agentRes.agentRtcUid) {
           agoraService.setKnownAgentUid(agentRes.agentRtcUid);
         }
@@ -590,8 +606,54 @@ export function useIncidentData() {
     }));
   }, [voiceConnected, rtcParticipants, speakingMap]);
 
+  // Combined real team members from Room Database and RTC presence (ZERO fake users)
+  const dynamicTeamMembers = useMemo(() => {
+    // If voice RTC is connected and has participants, prioritize live RTC status
+    if (voiceConnected && voiceParticipants.length > 0) {
+      return voiceParticipants;
+    }
+
+    // If persistent room members exist from DB, map them cleanly
+    if (roomMembers && roomMembers.length > 0) {
+      return roomMembers.map((m) => {
+        const isCurrent = currentUser && m.id === currentUser.id;
+        const initials = m.name
+          ? m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+          : 'U';
+        const roleLabel = m.role === 'OWNER' || m.role === 'INCIDENT_COMMANDER' ? 'Incident Commander' : 'Member';
+        return {
+          id: m.id,
+          name: isCurrent ? `${m.name} (You)` : m.name,
+          role: roleLabel,
+          initials,
+          isLocal: isCurrent,
+          isActive: true,
+          isSpeaking: false,
+        };
+      });
+    }
+
+    // Default to current authenticated user
+    const currentName = currentUser?.name || 'You';
+    const currentInitials = currentUser?.name
+      ? currentUser.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+      : 'YOU';
+    return [
+      {
+        id: currentUser?.id || 'local-user',
+        name: `${currentName} (Incident Commander)`,
+        role: 'Incident Commander',
+        initials: currentInitials,
+        isLocal: true,
+        isActive: true,
+        isSpeaking: false,
+      },
+    ];
+  }, [voiceConnected, voiceParticipants, roomMembers, currentUser]);
+
   return {
     data,
+    roomMembers,
     isDemoMode,
     isBackendConnected,
     isLoading,
@@ -604,6 +666,7 @@ export function useIncidentData() {
     isVoiceConnecting,
     isMuted,
     voiceParticipants,
+    dynamicTeamMembers,
     createActionItem,
     updateActionItem,
     deleteActionItem,

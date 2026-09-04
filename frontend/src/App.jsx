@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { useIncidentData } from './hooks/useIncidentData';
+import { apiService } from './services/api';
 import BackgroundCanvas from './components/BackgroundCanvas';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -17,10 +19,29 @@ import RisksPanel from './components/RisksPanel';
 import TeamPanel from './components/TeamPanel';
 import ConfirmationModal from './components/ConfirmationModal';
 import CriticalActionBanner from './components/CriticalActionBanner';
+import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
+import DashboardPage from './components/DashboardPage';
+import ShareRoomModal from './components/ShareRoomModal';
+import { Loader2 } from 'lucide-react';
 
-export default function App() {
+function parseUrlRoute() {
+  const pathname = window.location.pathname;
+  if (pathname === '/login') return { route: 'login', roomId: null };
+  if (pathname === '/register') return { route: 'register', roomId: null };
+  if (pathname === '/dashboard') return { route: 'dashboard', roomId: null };
+  if (pathname.startsWith('/room/')) {
+    const roomId = pathname.replace('/room/', '').split('/')[0];
+    return { route: 'room', roomId };
+  }
+  return { route: 'root', roomId: null };
+}
+
+function MainApp() {
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+
   // ------------------------------------------------------------------------
-  // THEME MANAGEMENT (Dark default, persisted to localStorage, grey glass in light)
+  // THEME MANAGEMENT (Dark default, persisted to localStorage)
   // ------------------------------------------------------------------------
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('incyra_theme');
@@ -41,16 +62,61 @@ export default function App() {
   };
 
   // ------------------------------------------------------------------------
-  // NAVIGATION & RESPONSIVE SIDEBAR
+  // CLIENT ROUTING & NAVIGATION
+  // ------------------------------------------------------------------------
+  const [navigation, setNavigation] = useState(() => parseUrlRoute());
+  const [activeRoom, setActiveRoom] = useState(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Sync with browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      setNavigation(parseUrlRoute());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = useCallback((targetRoute, targetRoomId = null) => {
+    let path = '/';
+    if (targetRoute === 'login') path = '/login';
+    else if (targetRoute === 'register') path = '/register';
+    else if (targetRoute === 'dashboard') path = '/dashboard';
+    else if (targetRoute === 'room' && targetRoomId) path = `/room/${targetRoomId}`;
+
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setNavigation({ route: targetRoute, roomId: targetRoomId });
+  }, []);
+
+  // Auto-join room when opening a room link as an authenticated user
+  useEffect(() => {
+    if (navigation.route === 'room' && navigation.roomId && isAuthenticated) {
+      apiService.joinRoom(navigation.roomId).then((res) => {
+        if (res && res.room) {
+          setActiveRoom(res.room);
+        }
+      }).catch((err) => {
+        console.warn('[ROOM] Auto-join note:', err.message);
+      });
+    }
+  }, [navigation.route, navigation.roomId, isAuthenticated]);
+
+  // ------------------------------------------------------------------------
+  // INTERNAL ROOM NAVIGATION (TABS)
   // ------------------------------------------------------------------------
   const [currentView, setCurrentView] = useState('command-center');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // ------------------------------------------------------------------------
-  // INCIDENT STATE & MUTATIONS
+  // INCIDENT STATE & MUTATIONS (Room-scoped)
   // ------------------------------------------------------------------------
+  const activeRoomId = navigation.route === 'room' ? navigation.roomId : null;
+
   const {
     data,
+    roomMembers,
     isDemoMode,
     isBackendConnected,
     isLoading,
@@ -61,6 +127,7 @@ export default function App() {
     isVoiceConnecting,
     isMuted,
     voiceParticipants,
+    dynamicTeamMembers,
     createActionItem,
     updateActionItem,
     deleteActionItem,
@@ -74,28 +141,7 @@ export default function App() {
     handleJoinVoice,
     handleLeaveVoice,
     handleToggleMute,
-  } = useIncidentData();
-
-  // Real Dynamic Team Members (based purely on real connected Agora participants)
-  const activeTeamMembers = React.useMemo(() => {
-    if (voiceParticipants && voiceParticipants.length > 0) {
-      return voiceParticipants;
-    }
-    if (data.participants && data.participants.length > 0) {
-      return data.participants;
-    }
-    return [
-      {
-        id: 'local-user',
-        name: 'You (Incident Commander)',
-        role: 'Incident Commander',
-        initials: 'YOU',
-        isLocal: true,
-        isActive: true,
-        isSpeaking: false,
-      },
-    ];
-  }, [voiceParticipants, data.participants]);
+  } = useIncidentData(activeRoomId, user);
 
   // ------------------------------------------------------------------------
   // MODAL MANAGEMENT
@@ -135,7 +181,61 @@ export default function App() {
   };
 
   // ------------------------------------------------------------------------
-  // VIEW RENDERER
+  // ROUTE RESOLUTION
+  // ------------------------------------------------------------------------
+  if (isAuthLoading) {
+    return (
+      <div className="auth-page-container">
+        <BackgroundCanvas theme={theme} />
+        <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', zIndex: 10 }}>
+          <Loader2 size={32} className="spinner text-cyan" />
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Initializing INCYRA...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If unauthenticated:
+  if (!isAuthenticated) {
+    if (navigation.route === 'register') {
+      return (
+        <>
+          <BackgroundCanvas theme={theme} />
+          <RegisterPage
+            onNavigate={navigateTo}
+            redirectRoomId={navigation.roomId}
+          />
+        </>
+      );
+    }
+    // Default to login page
+    return (
+      <>
+        <BackgroundCanvas theme={theme} />
+        <LoginPage
+          onNavigate={navigateTo}
+          redirectRoomId={navigation.roomId}
+        />
+      </>
+    );
+  }
+
+  // If authenticated:
+  if (navigation.route === 'login' || navigation.route === 'register' || navigation.route === 'root' || navigation.route === 'dashboard') {
+    return (
+      <>
+        <BackgroundCanvas theme={theme} />
+        <DashboardPage
+          onOpenRoom={(roomId) => navigateTo('room', roomId)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+      </>
+    );
+  }
+
+  // ------------------------------------------------------------------------
+  // INCIDENT ROOM COMMAND CENTER VIEW
   // ------------------------------------------------------------------------
   const renderViewContent = () => {
     switch (currentView) {
@@ -160,7 +260,7 @@ export default function App() {
                 isRefreshing={isRefreshing}
               />
             </div>
-            <TeamPanel participants={activeTeamMembers} />
+            <TeamPanel participants={dynamicTeamMembers} />
           </div>
         );
 
@@ -196,7 +296,7 @@ export default function App() {
           <div className="grid-stack-gap">
             <ActionItemsPanel
               actions={data.actions}
-              participants={activeTeamMembers}
+              participants={dynamicTeamMembers}
               onToggleStatus={toggleActionStatus}
               onCreateAction={createActionItem}
               onUpdateAction={updateActionItem}
@@ -205,7 +305,7 @@ export default function App() {
             />
             <DecisionsPanel
               decisions={data.decisions}
-              participants={activeTeamMembers}
+              participants={dynamicTeamMembers}
               onCreateDecision={createDecision}
               onUpdateDecision={updateDecision}
               onDeleteDecision={deleteDecision}
@@ -217,7 +317,7 @@ export default function App() {
       case 'team':
         return (
           <div className="grid-stack-gap">
-            <TeamPanel participants={activeTeamMembers} />
+            <TeamPanel participants={dynamicTeamMembers} />
             <LiveVoiceRoom
               participants={voiceParticipants}
               isConnected={voiceConnected}
@@ -314,7 +414,7 @@ export default function App() {
                 {/* 6. Action Items */}
                 <ActionItemsPanel
                   actions={data.actions}
-                  participants={activeTeamMembers}
+                  participants={dynamicTeamMembers}
                   onToggleStatus={toggleActionStatus}
                   onCreateAction={createActionItem}
                   onUpdateAction={updateActionItem}
@@ -325,7 +425,7 @@ export default function App() {
               {/* Right Column: Chronological Incident Timeline & Team */}
               <div className="grid-stack-gap">
                 <IncidentTimeline timeline={data.timeline} />
-                <TeamPanel participants={activeTeamMembers} />
+                <TeamPanel participants={dynamicTeamMembers} />
               </div>
             </div>
           </>
@@ -357,11 +457,20 @@ export default function App() {
           onToggleTheme={toggleTheme}
           onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
           sidebarCollapsed={sidebarCollapsed}
+          onShareRoom={() => setIsShareModalOpen(true)}
+          onBackToDashboard={() => navigateTo('dashboard')}
         />
 
         {/* Dynamic Content */}
         <main className="content-area">{renderViewContent()}</main>
       </div>
+
+      {/* Share Room Modal */}
+      <ShareRoomModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        room={activeRoom || { id: activeRoomId || data.incident.id, title: data.incident.title, code: activeRoomId }}
+      />
 
       {/* Human-in-the-loop Confirmation Modal */}
       <ConfirmationModal
@@ -372,5 +481,13 @@ export default function App() {
         onConfirm={handleConfirmModal}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }

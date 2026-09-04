@@ -34,6 +34,8 @@ const config = {
   agoraTtsResourceId: process.env.AGORA_TTS_RESOURCE_ID || '',
   agoraAgentRtcUid: process.env.AGORA_AGENT_RTC_UID || '',
   agoraRemoteRtcUids: process.env.AGORA_REMOTE_RTC_UIDS || '',
+  jwtSecret: process.env.JWT_SECRET || 'incyra-secure-jwt-secret-key-2026',
+  dbPath: process.env.DB_PATH || '',
 };
 
 module.exports = config;

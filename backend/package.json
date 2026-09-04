@@ -5,9 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node ../tests/test-agora.js && node ../tests/test-endpoints.js && node ../tests/test-live-flow.js && node ../tests/test-phase1-stabilization.js && node ../tests/test-phase2.js && node ../tests/test-dynamic-context.js",
+    "test": "node ../tests/test-agora.js && node ../tests/test-endpoints.js && node ../tests/test-live-flow.js && node ../tests/test-phase1-stabilization.js && node ../tests/test-phase2.js && node ../tests/test-dynamic-context.js && node ../tests/test-phase3-complete.js",
+    "test:phase3": "node ../tests/test-phase3-complete.js",
     "test:live": "node ../tests/test-live-agora.js"
+
   },
   "keywords": [
     "incident-management",
@@ -20,8 +21,11 @@
   "license": "ISC",
   "dependencies": {
     "agora-token": "^2.0.6",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3"
   }
 }

@@ -11,7 +11,7 @@ const { defaultAgentManager, defaultTokenService } = require('../../../agora');
  */
 async function joinAgent(req, res, next) {
   try {
-    const { channelName } = req.body;
+    const channelName = req.body.channelName || req.body.channel;
 
     if (!channelName || typeof channelName !== 'string' || channelName.trim().length === 0) {
       return res.status(400).json({
@@ -48,7 +48,8 @@ async function joinAgent(req, res, next) {
  */
 async function generateToken(req, res, next) {
   try {
-    const { channelName, uid, role } = req.body;
+    const channelName = req.body.channelName || req.body.channel;
+    const { uid, role } = req.body;
 
     if (!channelName || typeof channelName !== 'string' || channelName.trim().length === 0) {
       return res.status(400).json({
@@ -56,6 +57,7 @@ async function generateToken(req, res, next) {
         error: 'Missing or invalid "channelName" in request body.',
       });
     }
+
 
     const cleanChannel = channelName.trim();
     const agentRtcUid = Number(process.env.AGORA_AGENT_RTC_UID || 1001);

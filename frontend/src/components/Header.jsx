@@ -7,8 +7,12 @@ import {
   Server,
   Activity,
   Menu,
+  Share2,
+  ChevronLeft,
+  LogOut,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import { useAuth } from '../context/AuthContext';
 
 export default function Header({
   incident,
@@ -18,10 +22,23 @@ export default function Header({
   onToggleTheme,
   onToggleSidebar,
   sidebarCollapsed,
+  onShareRoom,
+  onBackToDashboard,
 }) {
+  const { user, logout } = useAuth();
+
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+
   return (
     <header className="header-container">
-      {/* Left: Section and Mobile toggle */}
+      {/* Left: Dashboard back button, Section title and Mobile toggle */}
       <div className="header-left">
         <button
           className="btn-secondary theme-toggle-btn mobile-menu-btn"
@@ -31,6 +48,17 @@ export default function Header({
         >
           <Menu size={18} />
         </button>
+
+        {onBackToDashboard && (
+          <button
+            className="btn-secondary back-dashboard-btn"
+            onClick={onBackToDashboard}
+            title="Back to Incident Dashboard"
+          >
+            <ChevronLeft size={16} />
+            <span className="hide-mobile">Dashboard</span>
+          </button>
+        )}
 
         <div className="header-title-badge">
           <div className="header-category">
@@ -61,15 +89,26 @@ export default function Header({
         </div>
 
         {isDemoMode && (
-          <div className="badge badge-demo" title="Backend not detected on localhost:5000. Operating on realistic fallback state.">
+          <div className="badge badge-demo" title="Backend operating in local fallback state.">
             <Server size={11} />
-            <span>DEMO DATA MODE</span>
+            <span>LOCAL MODE</span>
           </div>
         )}
       </div>
 
-      {/* Right: Timer, Theme Toggle, Profile */}
+      {/* Right: Share Room, Timer, Theme Toggle, Profile */}
       <div className="header-right">
+        {onShareRoom && (
+          <button
+            className="btn-secondary share-room-header-btn"
+            onClick={onShareRoom}
+            title="Share Room Link"
+          >
+            <Share2 size={15} className="text-cyan" />
+            <span>Share Room</span>
+          </button>
+        )}
+
         <div className="incident-timer" title="Elapsed Incident Duration">
           <Clock size={14} className="text-muted" />
           <span>{formattedTime}</span>
@@ -78,10 +117,15 @@ export default function Header({
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
 
         <div
-          className="btn-secondary theme-toggle-btn"
-          title={`Active Session: ${incident.commander || 'Incident Commander'}`}
+          className="user-profile-header-pill"
+          title={`Active Session: ${user?.name || incident.commander || 'Incident Responder'}`}
         >
-          <User size={17} strokeWidth={1.8} />
+          <div className="user-avatar-circle-sm">
+            {getInitials(user?.name || incident.commander)}
+          </div>
+          <span className="user-header-name hide-mobile">
+            {user?.name || incident.commander || 'Responder'}
+          </span>
         </div>
       </div>
     </header>
