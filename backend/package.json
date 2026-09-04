@@ -1,0 +1,25 @@
+{
+  "name": "incyra-backend",
+  "version": "1.0.0",
+  "description": "Backend API service for INCYRA - Real-Time AI Voice Incident Commander",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node ../tests/test-endpoints.js"
+  },
+  "keywords": [
+    "incident-management",
+    "voice-ai",
+    "agora",
+    "real-time",
+    "incyra"
+  ],
+  "author": "INCYRA Team",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
