@@ -24,7 +24,12 @@ export function AuthProvider({ children }) {
       try {
         const userData = await apiService.getMe();
         if (isMounted) {
-          setUser(userData);
+          let savedProfile = null;
+          try {
+            const raw = localStorage.getItem('incyra_user_profile');
+            if (raw) savedProfile = JSON.parse(raw);
+          } catch (e) {}
+          setUser(userData ? { ...userData, ...(savedProfile || {}) } : null);
         }
       } catch (err) {
         console.warn('[AUTH] Failed to fetch current user:', err.message);
@@ -49,7 +54,12 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const data = await apiService.login({ email, password });
-      setUser(data.user);
+      let savedProfile = null;
+      try {
+        const raw = localStorage.getItem('incyra_user_profile');
+        if (raw) savedProfile = JSON.parse(raw);
+      } catch (e) {}
+      setUser(data.user ? { ...data.user, ...(savedProfile || {}) } : data.user);
       setToken(data.token);
       return data;
     } finally {
@@ -69,8 +79,22 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const updateProfile = useCallback((profileUpdates) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...profileUpdates };
+      try {
+        localStorage.setItem('incyra_user_profile', JSON.stringify(profileUpdates));
+      } catch (e) {}
+      return updated;
+    });
+  }, []);
+
   const logout = useCallback(() => {
     apiService.logout();
+    try {
+      localStorage.removeItem('incyra_user_profile');
+    } catch (e) {}
     setUser(null);
     setToken(null);
   }, []);
@@ -82,6 +106,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(user && token),
     login,
     register,
+    updateProfile,
     logout,
   };
 

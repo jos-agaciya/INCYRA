@@ -15,12 +15,14 @@ import {
   Sparkles,
   Loader2,
   RefreshCw,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/api';
 import ThemeToggle from './ThemeToggle';
 import CreateRoomModal from './CreateRoomModal';
 import ShareRoomModal from './ShareRoomModal';
+import ProfileModal from './ProfileModal';
 
 export default function DashboardPage({ onOpenRoom, theme, onToggleTheme }) {
   const { user, logout } = useAuth();
@@ -32,6 +34,7 @@ export default function DashboardPage({ onOpenRoom, theme, onToggleTheme }) {
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [shareModalRoom, setShareModalRoom] = useState(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const fetchRooms = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
@@ -91,13 +94,25 @@ export default function DashboardPage({ onOpenRoom, theme, onToggleTheme }) {
         <div className="dashboard-header-actions">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
 
-          <div className="user-profile-badge" title={`Signed in as ${user?.name} (${user?.email})`}>
-            <div className="user-avatar-circle">{getInitials(user?.name)}</div>
+          {/* Clickable Profile Badge */}
+          <button
+            type="button"
+            className="user-profile-badge interactive-profile-btn"
+            onClick={() => setIsProfileOpen(true)}
+            title={`Signed in as ${user?.name || 'User'} (${user?.email || ''}) — Click to edit profile`}
+            aria-label="Open User Profile and Settings"
+          >
+            {user?.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" className="user-avatar-circle" />
+            ) : (
+              <div className="user-avatar-circle">{getInitials(user?.name)}</div>
+            )}
             <div className="user-info-text">
               <span className="user-name">{user?.name || 'User'}</span>
-              <span className="user-role">Incident Responder</span>
+              <span className="user-role">{user?.role || 'Incident Commander'}</span>
             </div>
-          </div>
+            <ChevronDown size={14} className="text-muted hide-mobile" />
+          </button>
 
           <button
             className="btn-secondary logout-btn"
@@ -264,6 +279,14 @@ export default function DashboardPage({ onOpenRoom, theme, onToggleTheme }) {
         isOpen={Boolean(shareModalRoom)}
         onClose={() => setShareModalRoom(null)}
         room={shareModalRoom}
+      />
+
+      {/* Account & Profile Modal */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
     </div>
   );
