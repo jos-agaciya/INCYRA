@@ -4,16 +4,17 @@
 
 :root {
   /* Common typography & dimensions */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace;
   
   --sidebar-width-expanded: 260px;
-  --sidebar-width-collapsed: 76px;
-  --header-height: 68px;
+  --sidebar-width-collapsed: 74px;
+  --header-height: 66px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-xl: 18px;
   
   --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -183,6 +184,21 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color var(--transition-theme), color var(--transition-theme);
+}
+
+h1, h2, h3, h4, h5, h6,
+.brand-name,
+.panel-title,
+.modal-title,
+.metric-number,
+.intel-stat-count {
+  font-family: var(--font-heading);
+  letter-spacing: -0.015em;
+  font-weight: 700;
+}
+
+p, span, div, li, a, label {
+  overflow-wrap: break-word;
 }
 
 #root {
@@ -982,22 +998,117 @@ button:focus-visible, input:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.45rem 0.95rem;
+  height: 36px;
+  padding: 0 1rem;
   border-radius: var(--radius-md);
   font-size: 0.82rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  user-select: none;
+  cursor: pointer;
+  border: 1px solid transparent;
   transition: all var(--transition-fast);
 }
 
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: scale(0.97) translateY(0);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+}
+
+.btn-sm {
+  height: 30px;
+  padding: 0 0.75rem;
+  font-size: 0.76rem;
+  border-radius: var(--radius-sm);
+}
+
+.btn-icon,
+.theme-toggle-btn,
+.sidebar-toggle-btn,
+.mobile-menu-btn,
+.modal-close-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  max-width: 36px !important;
+  max-height: 36px !important;
+  padding: 0 !important;
+  aspect-ratio: 1 / 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--radius-md) !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-sm.btn-icon {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  max-width: 30px !important;
+  max-height: 30px !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.theme-toggle-btn:hover,
+.sidebar-toggle-btn:hover,
+.mobile-menu-btn:hover,
+.modal-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.theme-toggle-btn:active,
+.sidebar-toggle-btn:active,
+.mobile-menu-btn:active,
+.modal-close-btn:active {
+  transform: scale(0.95);
+}
+
 .btn-primary {
-  background: var(--text-primary);
-  color: var(--text-inverse);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: var(--accent-cyan);
+  color: #06080c;
+  font-weight: 700;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.25);
 }
 .btn-primary:hover {
-  opacity: 0.92;
-  transform: translateY(-1px);
+  background: #56c8fa;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.35);
+}
+
+.btn-secondary {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+}
+.btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 .btn-danger {
@@ -1006,17 +1117,18 @@ button:focus-visible, input:focus-visible {
   border: 1px solid var(--accent-red-border);
 }
 .btn-danger:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.22);
+  border-color: var(--accent-red);
 }
 
-.btn-secondary {
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-medium);
-  color: var(--text-primary);
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
 }
-.btn-secondary:hover {
+.btn-ghost:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 /* ==========================================================================
@@ -2076,10 +2188,15 @@ canvas#incyra-canvas {
   animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Form Controls & Modal Inputs */
+.form-group,
 .intel-modal-form-group {
-  margin-bottom: 1.1rem;
+  margin-bottom: 1.15rem;
+  display: flex;
+  flex-direction: column;
 }
 
+.form-label,
 .intel-modal-label {
   display: block;
   font-size: 0.74rem;
@@ -2090,31 +2207,88 @@ canvas#incyra-canvas {
   margin-bottom: 0.4rem;
 }
 
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.form-input,
+.form-textarea,
+.form-select,
 .intel-modal-input,
 .intel-modal-textarea,
 .intel-modal-select {
   width: 100%;
-  padding: 0.65rem 0.85rem;
-  font-size: 0.84rem;
-  border-radius: var(--radius-sm);
+  min-height: 40px;
+  padding: 0.65rem 0.95rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  border-radius: var(--radius-md);
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-medium);
   color: var(--text-primary);
-  font-family: inherit;
+  font-family: var(--font-sans);
+  box-sizing: border-box;
   transition: all var(--transition-fast);
 }
 
+.form-input::placeholder,
+.form-textarea::placeholder,
+.intel-modal-input::placeholder,
+.intel-modal-textarea::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.8;
+}
+
+.form-input:hover,
+.form-textarea:hover,
+.form-select:hover,
+.intel-modal-input:hover,
+.intel-modal-textarea:hover,
+.intel-modal-select:hover {
+  border-color: var(--border-strong);
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus,
 .intel-modal-input:focus,
 .intel-modal-textarea:focus,
 .intel-modal-select:focus {
   outline: none;
   border-color: var(--accent-cyan);
   box-shadow: 0 0 0 3px var(--accent-cyan-subtle);
+  background: var(--bg-surface);
 }
 
+.form-input:disabled,
+.form-textarea:disabled,
+.form-select:disabled,
+.intel-modal-input:disabled,
+.intel-modal-textarea:disabled,
+.intel-modal-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--bg-subtle);
+}
+
+.form-textarea,
 .intel-modal-textarea {
-  min-height: 80px;
+  min-height: 85px;
   resize: vertical;
+}
+
+.form-select,
+.intel-modal-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 14px;
+  padding-right: 2.25rem;
+  cursor: pointer;
 }
 
 /* ==========================================================================
@@ -2230,21 +2404,30 @@ canvas#incyra-canvas {
 
 .password-toggle-btn {
   position: absolute;
-  right: 0.75rem;
+  right: 0.65rem;
+  width: 30px;
+  height: 30px;
+  aspect-ratio: 1 / 1;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  padding: 0.25rem;
-  display: flex;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: color var(--transition-fast);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
 
 .password-toggle-btn:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.password-toggle-btn:active {
+  transform: scale(0.92);
 }
 
 .auth-submit-btn {
